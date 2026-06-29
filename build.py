@@ -230,7 +230,7 @@ def render_html(items, groups_order, cat_order, now_str):
     components_json = json.dumps(cat_order["COMPONENT"] + ["others"], ensure_ascii=False)
 
     return """<!DOCTYPE html>
-<html lang="ko" data-theme="dark">
+<html lang="ko" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -281,6 +281,13 @@ def render_html(items, groups_order, cat_order, now_str):
   .tab .count { font-size:11px; opacity:.7; }
   .tab.active .count { opacity:.9; }
   .folder-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .folder-io { display:flex; gap:6px; margin-top:12px; padding:0 4px; }
+  .folder-io button {
+    flex:1; font-size:11px; color:var(--muted);
+    background:var(--card); border:1px solid var(--border);
+    border-radius:6px; padding:6px 4px; cursor:pointer;
+  }
+  .folder-io button:hover { border-color:var(--accent); color:var(--accent); }
 
   /* ---- 메인 ---- */
   .main { flex:1; min-width:0; }
@@ -317,6 +324,8 @@ def render_html(items, groups_order, cat_order, now_str):
     border-radius:12px; padding:15px 18px; margin-bottom:12px;
   }
   .card:hover { border-color:var(--accent); }
+  .card.read { opacity:0.55; }
+  .card.read:hover { opacity:0.8; }
   .card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px; }
   .journal { font-size:11.5px; font-weight:600;
     color:var(--jcolor, var(--accent));
@@ -328,6 +337,14 @@ def render_html(items, groups_order, cat_order, now_str):
     color:var(--muted); padding:0 2px; line-height:1; transition:color .12s, transform .12s;
   }
   .save-btn:hover { color:var(--accent); transform:scale(1.2); }
+  .claude-btn {
+    background:none; border:1px solid var(--border); cursor:pointer;
+    font-size:11px; font-weight:700; color:var(--muted);
+    width:20px; height:20px; border-radius:5px; line-height:1;
+    transition:all .12s;
+  }
+  .claude-btn:hover { color:#fff; background:var(--accent); border-color:var(--accent); }
+  @media (max-width:680px) { .claude-btn { display:none; } }
   .title { font-size:16px; margin:2px 0 6px; line-height:1.4; }
   .title a { color:var(--text); text-decoration:none; }
   .title a:hover { color:var(--accent); text-decoration:underline; }
@@ -359,6 +376,22 @@ def render_html(items, groups_order, cat_order, now_str):
   }
   .filterbar[hidden] { display:none; }
   .filter-actions { display:flex; gap:8px; margin-top:2px; }
+  /* 검색 바 */
+  .searchbar {
+    background:var(--sidebar); border-top:1px solid var(--border);
+    padding:12px 24px; display:flex; gap:8px; align-items:center;
+  }
+  .searchbar[hidden] { display:none; }
+  #searchInput {
+    flex:1; background:var(--bg); border:1px solid var(--border);
+    border-radius:8px; padding:9px 13px; color:var(--text); font-size:14px;
+  }
+  #searchInput:focus { outline:none; border-color:var(--accent); }
+  .search-clear {
+    background:none; border:1px solid var(--border); color:var(--muted);
+    border-radius:8px; padding:8px 12px; cursor:pointer; font-size:13px;
+  }
+  .search-clear:hover { border-color:var(--accent); color:var(--accent); }
   .filter-clear {
     font-size:12px; color:var(--muted); background:none; border:none;
     cursor:pointer; text-decoration:underline; padding:0;
@@ -426,6 +459,11 @@ def render_html(items, groups_order, cat_order, now_str):
       <span id="addFolder" style="cursor:pointer; color:var(--accent); font-size:16px;">+</span>
     </h2>
     <div id="folderList"></div>
+    <div class="folder-io">
+      <button id="exportFolders" title="폴더를 파일로 내보내기">내보내기</button>
+      <button id="importFolders" title="파일에서 폴더 가져오기">가져오기</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+    </div>
   </nav>
   <div class="main">
     <div class="topbar">
@@ -435,8 +473,9 @@ def render_html(items, groups_order, cat_order, now_str):
         <div class="meta">최근 14일 · battery 관련 · 업데이트 __NOW__ KST</div>
       </div>
       <div style="display:flex; gap:8px; align-items:center;">
+        <button class="theme-btn" id="searchToggle">🔍 검색</button>
         <button class="theme-btn" id="filterToggle">🔬 필터</button>
-        <button class="theme-btn" id="themeBtn">☀️ 라이트</button>
+        <button class="theme-btn" id="themeBtn">🌙 다크</button>
       </div>
     </header>
     <div class="filterbar" id="filterbar" hidden>
@@ -452,6 +491,10 @@ def render_html(items, groups_order, cat_order, now_str):
         <button class="filter-clear" id="filterClear">필터 초기화</button>
       </div>
     </div>
+    <div class="searchbar" id="searchbar" hidden>
+      <input type="text" id="searchInput" placeholder="제목 · 초록 · 저자에서 검색...">
+      <button class="search-clear" id="searchClear">✕</button>
+    </div>
     </div>
     <div class="content" id="content"></div>
   </div>
@@ -465,6 +508,7 @@ const COMPONENTS = __COMPONENTS__;
 let activeGroup = "전체";
 let activeSystems = new Set();      // 선택된 시스템 칩 (비어있으면 전체)
 let activeComponents = new Set();   // 선택된 구성요소 칩
+let searchQuery = "";               // 검색어 (제목/초록/저자)
 
 // ---- 폴더 (localStorage 기반) ----
 // 구조: { "폴더명": [ {논문 통째 복사}, ... ], ... }
@@ -492,6 +536,23 @@ function isSaved(folderName, it){
   return (folders[folderName]||[]).some(p => paperKey(p) === paperKey(it));
 }
 
+// ---- 읽음 표시 (localStorage) ----
+const READ_KEY = "paperFeedRead";
+let readSet = loadReadSet();
+function loadReadSet(){
+  try {
+    const raw = localStorage.getItem(READ_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch(e){ return new Set(); }
+}
+function saveReadSet(){
+  try { localStorage.setItem(READ_KEY, JSON.stringify([...readSet])); } catch(e){}
+}
+function markRead(it){
+  readSet.add(paperKey(it));
+  saveReadSet();
+}
+
 // ---- 사이드바 탭 만들기 ----
 function buildTabs(){
   const tabs = document.getElementById("tabs");
@@ -501,6 +562,10 @@ function buildTabs(){
       if(group !== "전체" && it.group !== group) return false;
       if(activeSystems.size>0 && !(it.systems||[]).some(s=>activeSystems.has(s))) return false;
       if(activeComponents.size>0 && !(it.components||[]).some(c=>activeComponents.has(c))) return false;
+      if(searchQuery){
+        const hay = (it.title + " " + it.abstract + " " + (it.authors||"")).toLowerCase();
+        if(!hay.includes(searchQuery)) return false;
+      }
       return true;
     }).length;
   }
@@ -589,6 +654,55 @@ document.getElementById("addFolder").onclick = () => {
   }
 };
 
+// 폴더 내보내기 (JSON 파일 다운로드)
+document.getElementById("exportFolders").onclick = () => {
+  if(Object.keys(folders).length === 0){ alert("내보낼 폴더가 없어요."); return; }
+  const blob = new Blob([JSON.stringify(folders, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const today = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `paper-folders-${today}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// 폴더 가져오기 (JSON 파일 업로드)
+document.getElementById("importFolders").onclick = () => {
+  document.getElementById("importFile").click();
+};
+document.getElementById("importFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if(typeof imported !== "object" || Array.isArray(imported)) throw new Error("형식 오류");
+      const mode = confirm(
+        "가져온 폴더를 현재 폴더와 합칠까요?\\n\\n확인 = 합치기 (같은 이름은 내용 병합)\\n취소 = 현재 폴더를 모두 교체"
+      );
+      if(mode){
+        // 병합
+        for(const [name, papers] of Object.entries(imported)){
+          if(!folders[name]) folders[name] = [];
+          for(const p of papers){
+            if(!folders[name].some(x => paperKey(x)===paperKey(p))) folders[name].push(p);
+          }
+        }
+      } else {
+        folders = imported;
+      }
+      saveFolders(); buildFolders(); buildTabs(); render();
+      alert("폴더를 가져왔어요.");
+    } catch(err){
+      alert("파일을 읽을 수 없어요. 올바른 폴더 파일인지 확인해주세요.");
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = "";  // 같은 파일 다시 선택 가능하게
+});
+
 // 메인 피드로 돌아가기 (출판사 그룹 클릭 시 자동)
 function backToFeed(){
   viewMode = "feed"; activeFolder = null;
@@ -632,6 +746,11 @@ function passFilter(it){
   if(activeComponents.size > 0){
     if(!(it.components||[]).some(c => activeComponents.has(c))) return false;
   }
+  // 검색어 (제목/초록/저자)
+  if(searchQuery){
+    const hay = (it.title + " " + it.abstract + " " + (it.authors||"")).toLowerCase();
+    if(!hay.includes(searchQuery)) return false;
+  }
   // 축들 사이는 AND (위 조건 전부 통과해야 도달)
   return true;
 }
@@ -645,6 +764,25 @@ document.getElementById("dropdownToggle").onclick = () => {
 document.getElementById("filterToggle").onclick = () => {
   const fb = document.getElementById("filterbar");
   fb.hidden = !fb.hidden;
+};
+
+// ---- 검색 바 열고 닫기 ----
+document.getElementById("searchToggle").onclick = () => {
+  const sb = document.getElementById("searchbar");
+  sb.hidden = !sb.hidden;
+  if(!sb.hidden) document.getElementById("searchInput").focus();
+};
+document.getElementById("searchInput").addEventListener("input", (e) => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  document.getElementById("searchToggle").textContent =
+    searchQuery ? `🔍 검색 ●` : "🔍 검색";
+  render(); buildTabs();
+});
+document.getElementById("searchClear").onclick = () => {
+  document.getElementById("searchInput").value = "";
+  searchQuery = "";
+  document.getElementById("searchToggle").textContent = "🔍 검색";
+  render(); buildTabs();
 };
 
 // ---- 필터 초기화 ----
@@ -669,6 +807,10 @@ function render(){
     list = (folders[activeFolder] || []).filter(it => {
       if(activeSystems.size>0 && !(it.systems||[]).some(s=>activeSystems.has(s))) return false;
       if(activeComponents.size>0 && !(it.components||[]).some(c=>activeComponents.has(c))) return false;
+      if(searchQuery){
+        const hay = (it.title + " " + it.abstract + " " + (it.authors||"")).toLowerCase();
+        if(!hay.includes(searchQuery)) return false;
+      }
       return true;
     });
   } else {
@@ -712,22 +854,42 @@ function render(){
     // 저장 버튼: 폴더 보기면 빼기(x), 피드면 담기(*)
     const btnIcon = (viewMode==="folder") ? "✕" : "☆";
     const btnTitle = (viewMode==="folder") ? "이 폴더에서 빼기" : "폴더에 담기";
+    const readClass = readSet.has(paperKey(it)) ? " read" : "";
     htmlStr += `
-      <article class="card" style="--jcolor:var(--g-${safeGroup}, var(--accent))">
+      <article class="card${readClass}" style="--jcolor:var(--g-${safeGroup}, var(--accent))">
         <div class="card-head">
           <span class="journal">${esc(it.journal)}</span>
           <div style="display:flex; align-items:center; gap:8px;">
             <span class="grp">${esc(it.group)}</span>
+            <button class="claude-btn" data-idx="${idx}" title="Claude로 분석 (새 탭)">C</button>
             <button class="save-btn" data-idx="${idx}" title="${btnTitle}">${btnIcon}</button>
           </div>
         </div>
-        <h2 class="title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
+        <h2 class="title"><a href="${esc(it.link)}" data-idx="${idx}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
         ${it.authors ? `<p class="authors">${esc(it.authors)}</p>` : ""}
         ${abs}
         ${tagHtml}
       </article>`;
   }
   content.innerHTML = htmlStr;
+
+  // 제목 클릭 → 읽음 처리
+  content.querySelectorAll(".title a").forEach(a => {
+    a.addEventListener("click", () => {
+      const it = currentList[parseInt(a.dataset.idx, 10)];
+      if(it){ markRead(it); a.closest(".card").classList.add("read"); }
+    });
+  });
+
+  // Claude 분석 버튼 → claude.ai 탭 열기 (탭 재사용)
+  content.querySelectorAll(".claude-btn").forEach(btn => {
+    btn.onclick = () => {
+      const it = currentList[parseInt(btn.dataset.idx, 10)];
+      if(it){ markRead(it); btn.closest(".card").classList.add("read"); }
+      // 같은 이름의 탭 재사용 → 매번 새 탭이 쌓이지 않음
+      window.open("https://claude.ai/new", "claudeSummaryTab");
+    };
+  });
 
   // 저장 버튼 이벤트 (위임)
   content.querySelectorAll(".save-btn").forEach(btn => {
@@ -787,13 +949,22 @@ function esc(s){
 }
 function escAttr(s){ return esc(s); }
 
-// ---- 라이트/다크 토글 ----
+// ---- 라이트/다크 토글 (선택 기억) ----
 const themeBtn = document.getElementById("themeBtn");
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  themeBtn.textContent = theme==="dark" ? "☀️ 라이트" : "🌙 다크";
+}
+// 저장된 테마 복원 (없으면 기본 라이트)
+let savedTheme = "light";
+try { savedTheme = localStorage.getItem("paperFeedTheme") || "light"; } catch(e){}
+applyTheme(savedTheme);
+
 themeBtn.onclick = () => {
-  const root = document.documentElement;
-  const next = root.getAttribute("data-theme")==="dark" ? "light":"dark";
-  root.setAttribute("data-theme", next);
-  themeBtn.textContent = next==="dark" ? "☀️ 라이트" : "🌙 다크";
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur==="dark" ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem("paperFeedTheme", next); } catch(e){}
 };
 
 buildTabs();
