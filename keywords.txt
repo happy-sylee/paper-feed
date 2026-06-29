@@ -1,39 +1,132 @@
 # ===================================================================
-# 주제 필터 키워드
+# 카테고리별 주제 키워드
 # ===================================================================
-# - 논문의 '제목' 또는 '초록'에 아래 단어 중 하나라도 들어가면 피드에 표시됨
-# - 대소문자 구분 안 함 (battery = Battery = BATTERY)
-# - 한 줄에 하나씩
-# - '#'으로 시작하는 줄은 무시됨
-# - 너무 좁히고 싶으면 단어를 빼고, 넓히고 싶으면 추가하면 됨
+# 형식:
+#   [축:카테고리]  <- 대괄호로 카테고리 헤더 선언
+#   키워드          <- 그 아래 한 줄에 하나씩
 #
-# 주의: 'ion' 같은 너무 짧고 흔한 단어는 엉뚱한 논문까지 걸리니 피하는 게 좋아
+# 규칙:
+#   - 축은 SYSTEM(배터리 시스템) 또는 COMPONENT(구성요소)
+#   - 논문 제목+초록에 키워드가 있으면 그 카테고리로 태깅됨
+#   - 한 논문이 여러 카테고리에 동시 태깅 가능 (예: LIB + Cathode)
+#   - 대소문자 구분 안 함
+#   - '#'으로 시작하는 줄, 빈 줄은 무시
+#   - 어느 SYSTEM에도 안 걸리면 'others'(시스템), COMPONENT도 마찬가지
+#
+# ★ 필터링 기준: 아래 키워드 중 하나라도 매칭되면 그 논문은
+#   "battery 관련"으로 간주되어 피드에 표시됨.
+#   (즉, 이 파일이 곧 수집 필터 역할도 함)
+#
+# ⚠️ 약어 주의: 너무 짧고 흔한 약어(Al, C, Na 단독 등)는 오탐 위험.
+#   가능하면 구체적 표현(sodium-ion 등)을 함께/대신 사용.
 # ===================================================================
 
-battery
-batteries
+
+# ========== 축 1: 배터리 시스템 ==========
+
+[SYSTEM:LIB]
 lithium-ion
 li-ion
+lithium ion
+LIB
+LIBs
+
+[SYSTEM:LMB]
+lithium metal
+li metal
+lithium-metal
+lithium anode
+li anode
+LMB
+lithium plating
+lithium dendrite
+lithium-sulfur
+li-s
+lithium sulfur
+li-s battery
+
+[SYSTEM:SIB]
 sodium-ion
 na-ion
-solid-state battery
-solid electrolyte
-anode
+sodium ion
+sodium battery
+sodium batteries
+SIB
+SIBs
+hard carbon
+
+[SYSTEM:ZIB]
+zinc-ion
+zn-ion
+zinc ion
+zinc battery
+zinc batteries
+aqueous zinc
+ZIB
+ZIBs
+zinc anode
+zinc metal
+
+# 위 어디에도 안 걸리면 자동으로 'others' 시스템으로 분류됨
+# (potassium, magnesium, calcium, aluminum, lithium-sulfur 등)
+
+
+# ========== 축 2: 구성 요소 ==========
+
+[COMPONENT:Cathode]
 cathode
-electrolyte
-electrode
-lithium metal
-lithium plating
+positive electrode
+NMC
+NCM
+LFP
+LiFePO4
+LCO
+LiCoO2
+NCA
+layered oxide
+cathode material
+
+[COMPONENT:Anode]
+anode
+negative electrode
 graphite
 silicon anode
-LFP
-NMC
-energy storage
-electrochemical
-intercalation
-dendrite
+si anode
+hard carbon
+lithium titanate
+LTO
+anode material
+
+[COMPONENT:Electrolyte]
+electrolyte
+electrolytes
+liquid electrolyte
+solid electrolyte
+solid-state electrolyte
+gel electrolyte
+ionic liquid
 SEI
-state of charge
-state of health
-fast charging
-degradation
+solid electrolyte interphase
+electrolyte additive
+
+[COMPONENT:Separator]
+separator
+separators
+membrane separator
+polyolefin
+
+[COMPONENT:Binder]
+binder
+binders
+PVDF
+CMC binder
+aqueous binder
+
+[COMPONENT:Current collector]
+current collector
+copper foil
+aluminum foil
+cu foil
+al foil
+
+# 위 어디에도 안 걸리면 자동으로 'others' 구성요소로 분류됨
