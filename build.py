@@ -115,6 +115,30 @@ def clean_html(raw):
     return text
 
 
+def get_authors(entry, max_authors=4):
+    """RSS entry에서 저자 목록을 추출. 형식이 제각각이라 방어적으로 처리.
+    - entry.authors (리스트) 또는 entry.author (문자열) 시도
+    - 너무 많으면 max_authors까지 + 'et al.'
+    - 없으면 빈 문자열"""
+    names = []
+    if entry.get("authors"):
+        for a in entry["authors"]:
+            name = a.get("name", "").strip() if isinstance(a, dict) else str(a).strip()
+            if name:
+                names.append(name)
+    if not names and entry.get("author"):
+        raw = str(entry["author"]).strip()
+        if raw:
+            parts = re.split(r"\s*(?:,|;|\band\b|&)\s*", raw)
+            names = [p.strip() for p in parts if p.strip()]
+    names = [clean_html(n) for n in names if n]
+    if not names:
+        return ""
+    if len(names) > max_authors:
+        return ", ".join(names[:max_authors]) + " et al."
+    return ", ".join(names)
+
+
 def get_entry_date(entry):
     for key in ("published_parsed", "updated_parsed"):
         t = entry.get(key)
@@ -157,6 +181,7 @@ def main():
                         abstract = ""
                 link = entry.get("link", "")
                 date = get_entry_date(entry)
+                authors = get_authors(entry)
 
                 if date and date < cutoff:
                     continue
@@ -180,6 +205,7 @@ def main():
                     "link": link,
                     "date": date_kst,
                     "ts": ts,
+                    "authors": authors,
                     "systems": tags["systems"],
                     "components": tags["components"],
                 })
@@ -217,8 +243,8 @@ def render_html(items, groups_order, cat_order, now_str):
     --g-Nature:#f06a35; --g-Science:#f08080; --g-Wiley:#6ea8fe;
     --g-RSC:#5fc98a; --g-Elsevier:#e6c34a; --g-ACS:#8a93e0;
     /* 시스템 카테고리 색 (다크) */
-    --sys-LIB:#6ea8fe; --sys-LMB:#b48ef0; --sys-SIB:#5fc98a;
-    --sys-ZIB:#e6a34a; --sys-others:#9aa0a6;
+    --sys-LIB:#5ad1c8; --sys-LMB:#b48ef0; --sys-SIB:#5fc98a;
+    --sys-ZIB:#e88fb8; --sys-others:#d9a441;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --sidebar:#ffffff; --card:#ffffff; --border:#e2e5ea;
@@ -227,8 +253,8 @@ def render_html(items, groups_order, cat_order, now_str):
     --g-Nature:#ea5c27; --g-Science:#c43d3d; --g-Wiley:#2563eb;
     --g-RSC:#1f9254; --g-Elsevier:#a37e12; --g-ACS:#4750b0;
     /* 시스템 카테고리 색 (라이트) */
-    --sys-LIB:#2563eb; --sys-LMB:#7c3aed; --sys-SIB:#1f9254;
-    --sys-ZIB:#b8740f; --sys-others:#6b7280;
+    --sys-LIB:#0e9b90; --sys-LMB:#7c3aed; --sys-SIB:#1f9254;
+    --sys-ZIB:#c43d7a; --sys-others:#b8740f;
   }
   * { box-sizing:border-box; }
   body {
@@ -254,6 +280,7 @@ def render_html(items, groups_order, cat_order, now_str):
   .tab.active { background:var(--accent); color:#fff; }
   .tab .count { font-size:11px; opacity:.7; }
   .tab.active .count { opacity:.9; }
+  .folder-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   /* ---- 메인 ---- */
   .main { flex:1; min-width:0; }
@@ -293,9 +320,15 @@ def render_html(items, groups_order, cat_order, now_str):
     background:color-mix(in srgb, var(--jcolor, var(--accent)) 14%, transparent);
     padding:2px 9px; border-radius:999px; }
   .grp { font-size:11px; color:var(--muted); }
-  .title { font-size:16px; margin:2px 0 8px; line-height:1.4; }
+  .save-btn {
+    background:none; border:none; cursor:pointer; font-size:16px;
+    color:var(--muted); padding:0 2px; line-height:1; transition:color .12s, transform .12s;
+  }
+  .save-btn:hover { color:var(--accent); transform:scale(1.2); }
+  .title { font-size:16px; margin:2px 0 6px; line-height:1.4; }
   .title a { color:var(--text); text-decoration:none; }
   .title a:hover { color:var(--accent); text-decoration:underline; }
+  .authors { font-size:12.5px; color:var(--muted); margin:0 0 8px; }
   .abstract { margin:0; color:var(--muted); font-size:14px; }
   .no-abstract { font-style:italic; opacity:.6; }
   /* 카드 안 카테고리 태그 */
@@ -315,12 +348,18 @@ def render_html(items, groups_order, cat_order, now_str):
     border-color:var(--border);
   }
 
-  /* 상단 필터 바 */
+  /* 상단 필터 바 (토글로 열고 닫음) */
   .filterbar {
-    position:sticky; top:56px; z-index:8;
-    background:var(--bg); border-bottom:1px solid var(--border);
-    padding:10px 24px; display:flex; flex-direction:column; gap:8px;
+    background:var(--sidebar); border-bottom:1px solid var(--border);
+    padding:14px 24px; display:flex; flex-direction:column; gap:10px;
   }
+  .filterbar[hidden] { display:none; }
+  .filter-actions { display:flex; gap:8px; margin-top:2px; }
+  .filter-clear {
+    font-size:12px; color:var(--muted); background:none; border:none;
+    cursor:pointer; text-decoration:underline; padding:0;
+  }
+  .filter-clear:hover { color:var(--accent); }
   .filter-row { display:flex; align-items:center; gap:10px; }
   .filter-label {
     font-size:11px; font-weight:600; color:var(--muted);
@@ -377,6 +416,11 @@ def render_html(items, groups_order, cat_order, now_str):
     </button>
     <h2>출판사 그룹</h2>
     <div id="tabs"></div>
+    <h2 style="margin-top:18px; display:flex; justify-content:space-between; align-items:center;">
+      <span>내 폴더</span>
+      <span id="addFolder" style="cursor:pointer; color:var(--accent); font-size:16px;">＋</span>
+    </h2>
+    <div id="folderList"></div>
   </nav>
   <div class="main">
     <header>
@@ -384,9 +428,12 @@ def render_html(items, groups_order, cat_order, now_str):
         <h1>📚 논문 피드</h1>
         <div class="meta">최근 14일 · battery 관련 · 업데이트 __NOW__ KST</div>
       </div>
-      <button class="theme-btn" id="themeBtn">☀️ 라이트</button>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button class="theme-btn" id="filterToggle">🔬 필터</button>
+        <button class="theme-btn" id="themeBtn">☀️ 라이트</button>
+      </div>
     </header>
-    <div class="filterbar" id="filterbar">
+    <div class="filterbar" id="filterbar" hidden>
       <div class="filter-row">
         <span class="filter-label">시스템</span>
         <div class="chips" id="systemChips"></div>
@@ -394,6 +441,9 @@ def render_html(items, groups_order, cat_order, now_str):
       <div class="filter-row">
         <span class="filter-label">구성요소</span>
         <div class="chips" id="componentChips"></div>
+      </div>
+      <div class="filter-actions">
+        <button class="filter-clear" id="filterClear">필터 초기화</button>
       </div>
     </div>
     <div class="content" id="content"></div>
@@ -408,6 +458,32 @@ const COMPONENTS = __COMPONENTS__;
 let activeGroup = "전체";
 let activeSystems = new Set();      // 선택된 시스템 칩 (비어있으면 전체)
 let activeComponents = new Set();   // 선택된 구성요소 칩
+
+// ---- 폴더 (localStorage 기반) ----
+// 구조: { "폴더명": [ {논문 통째 복사}, ... ], ... }
+const STORE_KEY = "paperFeedFolders";
+let folders = loadFolders();
+let viewMode = "feed";   // "feed" = 메인 피드, "folder" = 특정 폴더 보기
+let activeFolder = null;
+let currentList = [];    // 현재 화면에 그려진 논문 목록 (저장 버튼 참조용)
+
+function loadFolders(){
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e){ return {}; }
+}
+function saveFolders(){
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(folders)); }
+  catch(e){ alert("저장 공간이 부족하거나 브라우저가 저장을 막고 있어요."); }
+}
+function paperKey(it){
+  // 중복 판단용 키 (링크 우선, 없으면 제목)
+  return it.link || it.title;
+}
+function isSaved(folderName, it){
+  return (folders[folderName]||[]).some(p => paperKey(p) === paperKey(it));
+}
 
 // ---- 사이드바 탭 만들기 ----
 function buildTabs(){
@@ -429,8 +505,10 @@ function buildTabs(){
     div.innerHTML = `<span>${g}</span><span class="count">${countFor(g)}</span>`;
     div.onclick = () => {
       activeGroup = g;
+      backToFeed();         // 폴더 보기 → 메인 피드로
       render();
       buildTabs();
+      buildFolders();
       // 모바일 드롭다운: 선택 시 라벨 갱신하고 접기
       document.getElementById("currentGroup").textContent = g;
       document.getElementById("sidebar").classList.remove("open");
@@ -439,7 +517,75 @@ function buildTabs(){
   });
 }
 
-// ---- 상단 필터 칩 만들기 ----
+// ---- 폴더 목록 사이드바 ----
+function buildFolders(){
+  const box = document.getElementById("folderList");
+  box.innerHTML = "";
+  const names = Object.keys(folders);
+  if(names.length === 0){
+    const hint = document.createElement("div");
+    hint.style.cssText = "font-size:12px; color:var(--muted); padding:6px 10px;";
+    hint.textContent = "＋ 로 폴더를 만들어보세요";
+    box.appendChild(hint);
+    return;
+  }
+  names.forEach(name => {
+    const div = document.createElement("div");
+    const isActive = (viewMode==="folder" && activeFolder===name);
+    div.className = "tab" + (isActive ? " active":"");
+    div.innerHTML = `<span class="folder-name">📁 ${escAttr(name)}</span><span class="count">${folders[name].length}</span>`;
+    // 폴더 선택
+    div.querySelector(".folder-name").onclick = () => {
+      viewMode = "folder"; activeFolder = name; activeGroup = "전체";
+      render(); buildTabs(); buildFolders();
+      document.getElementById("sidebar").classList.remove("open");
+    };
+    // 우클릭/길게 누르면 관리 메뉴 대신, 옆에 작은 메뉴 버튼
+    const menu = document.createElement("span");
+    menu.textContent = "⋯";
+    menu.style.cssText = "cursor:pointer; color:var(--muted); padding:0 4px; margin-left:4px;";
+    menu.onclick = (e) => { e.stopPropagation(); folderMenu(name); };
+    div.appendChild(menu);
+    box.appendChild(div);
+  });
+}
+
+function folderMenu(name){
+  const action = prompt(
+    `폴더 "${name}"\n\n무엇을 할까요?\n  1 = 이름 수정\n  2 = 삭제\n\n번호를 입력하세요 (취소는 빈칸):`
+  );
+  if(action === "1"){
+    const newName = prompt("새 폴더 이름:", name);
+    if(newName && newName.trim() && newName !== name){
+      if(folders[newName]){ alert("같은 이름의 폴더가 이미 있어요."); return; }
+      folders[newName] = folders[name];
+      delete folders[name];
+      if(activeFolder===name) activeFolder=newName;
+      saveFolders(); buildFolders(); render();
+    }
+  } else if(action === "2"){
+    if(confirm(`폴더 "${name}"을(를) 삭제할까요? (담긴 논문 정보도 사라져요)`)){
+      delete folders[name];
+      if(activeFolder===name){ viewMode="feed"; activeFolder=null; }
+      saveFolders(); buildFolders(); buildTabs(); render();
+    }
+  }
+}
+
+// ＋ 폴더 추가
+document.getElementById("addFolder").onclick = () => {
+  const name = prompt("새 폴더 이름:");
+  if(name && name.trim()){
+    if(folders[name]){ alert("같은 이름의 폴더가 이미 있어요."); return; }
+    folders[name] = [];
+    saveFolders(); buildFolders();
+  }
+};
+
+// 메인 피드로 돌아가기 (출판사 그룹 클릭 시 자동)
+function backToFeed(){
+  viewMode = "feed"; activeFolder = null;
+}
 function buildChips(){
   const sysBox = document.getElementById("systemChips");
   const compBox = document.getElementById("componentChips");
@@ -488,22 +634,56 @@ document.getElementById("dropdownToggle").onclick = () => {
   document.getElementById("sidebar").classList.toggle("open");
 };
 
+// ---- 필터 바 열고 닫기 (웹+모바일 공통) ----
+document.getElementById("filterToggle").onclick = () => {
+  const fb = document.getElementById("filterbar");
+  fb.hidden = !fb.hidden;
+};
+
+// ---- 필터 초기화 ----
+document.getElementById("filterClear").onclick = () => {
+  activeSystems.clear();
+  activeComponents.clear();
+  render(); buildChips(); buildTabs();
+};
+
 // ---- 본문 렌더링 (날짜로 그룹핑) ----
 function render(){
   const content = document.getElementById("content");
-  let list = ITEMS.filter(passFilter);
+
+  // 필터 버튼에 활성 표시
+  const nFilters = activeSystems.size + activeComponents.size;
+  document.getElementById("filterToggle").textContent =
+    nFilters > 0 ? `🔬 필터 (${nFilters})` : "🔬 필터";
+
+  // 데이터 소스: 폴더 보기면 폴더 내용, 아니면 메인 피드
+  let list;
+  if(viewMode === "folder" && activeFolder !== null){
+    list = (folders[activeFolder] || []).filter(it => {
+      if(activeSystems.size>0 && !(it.systems||[]).some(s=>activeSystems.has(s))) return false;
+      if(activeComponents.size>0 && !(it.components||[]).some(c=>activeComponents.has(c))) return false;
+      return true;
+    });
+  } else {
+    list = ITEMS.filter(passFilter);
+  }
 
   // 정렬: 최신 날짜 우선, 같은 날짜면 저널 이름 순
   list.sort((a,b) => (b.ts - a.ts) || a.journal.localeCompare(b.journal));
 
   if(list.length===0){
-    content.innerHTML = '<p class="empty">조건에 맞는 논문이 없어요.</p>';
+    const msg = (viewMode==="folder")
+      ? '이 폴더가 비어있어요. 메인 피드에서 ★ 를 눌러 논문을 담아보세요.'
+      : '조건에 맞는 논문이 없어요.';
+    content.innerHTML = `<p class="empty">${msg}</p>`;
     return;
   }
 
   let htmlStr = "";
   let lastDate = null;
-  for(const it of list){
+  currentList = list;   // 저장 버튼 클릭 시 참조용
+  for(let idx=0; idx<list.length; idx++){
+    const it = list[idx];
     const d = it.date || "날짜 미상";
     if(d !== lastDate){
       htmlStr += `<div class="date-header">${d}</div>`;
@@ -522,24 +702,83 @@ function render(){
       ? `<div class="cat-tags">${sysTags}${compTags}</div>` : "";
     // 그룹 색: CSS 변수 --g-<group> 을 카드의 --jcolor 로 연결
     const safeGroup = it.group.replace(/[^a-zA-Z]/g, "");
+    // 저장 버튼: 폴더 보기면 빼기(✕), 피드면 담기(★)
+    const btnIcon = (viewMode==="folder") ? "✕" : "☆";
+    const btnTitle = (viewMode==="folder") ? "이 폴더에서 빼기" : "폴더에 담기";
     htmlStr += `
       <article class="card" style="--jcolor:var(--g-${safeGroup}, var(--accent))">
         <div class="card-head">
           <span class="journal">${esc(it.journal)}</span>
-          <span class="grp">${esc(it.group)}</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="grp">${esc(it.group)}</span>
+            <button class="save-btn" data-idx="${idx}" title="${btnTitle}">${btnIcon}</button>
+          </div>
         </div>
         <h2 class="title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
+        ${it.authors ? `<p class="authors">${esc(it.authors)}</p>` : ""}
         ${abs}
         ${tagHtml}
       </article>`;
   }
   content.innerHTML = htmlStr;
+
+  // 저장 버튼 이벤트 (위임)
+  content.querySelectorAll(".save-btn").forEach(btn => {
+    btn.onclick = () => {
+      const it = currentList[parseInt(btn.dataset.idx, 10)];
+      if(!it) return;
+      if(viewMode === "folder"){
+        // 폴더에서 빼기
+        folders[activeFolder] = (folders[activeFolder]||[]).filter(p => paperKey(p)!==paperKey(it));
+        saveFolders(); render(); buildFolders();
+      } else {
+        // 폴더에 담기 (폴더 선택)
+        savePaperToFolder(it);
+      }
+    };
+  });
+}
+
+// 논문을 폴더에 담기
+function savePaperToFolder(it){
+  const names = Object.keys(folders);
+  if(names.length === 0){
+    if(confirm("폴더가 없어요. 새로 만들까요?")){
+      const name = prompt("새 폴더 이름:");
+      if(name && name.trim()){
+        folders[name] = [];
+      } else return;
+    } else return;
+  }
+  const list = Object.keys(folders);
+  let target;
+  if(list.length === 1){
+    target = list[0];
+  } else {
+    const choice = prompt(
+      "어느 폴더에 담을까요?\n\n" +
+      list.map((n,i)=>`  ${i+1} = ${n}`).join("\n") +
+      "\n\n번호 입력:"
+    );
+    const i = parseInt(choice,10)-1;
+    if(isNaN(i) || i<0 || i>=list.length) return;
+    target = list[i];
+  }
+  if(isSaved(target, it)){
+    alert(`"${target}" 폴더에 이미 있어요.`);
+    return;
+  }
+  folders[target] = folders[target] || [];
+  folders[target].push(it);   // 논문 통째로 복사 저장
+  saveFolders(); buildFolders();
+  alert(`"${target}" 폴더에 담았어요. ⭐`);
 }
 
 function esc(s){
   return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")
                 .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+function escAttr(s){ return esc(s); }
 
 // ---- 라이트/다크 토글 ----
 const themeBtn = document.getElementById("themeBtn");
@@ -552,6 +791,7 @@ themeBtn.onclick = () => {
 
 buildTabs();
 buildChips();
+buildFolders();
 render();
 </script>
 </body>
