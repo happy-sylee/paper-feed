@@ -74,6 +74,21 @@ def matches_keywords(text, keywords):
     return any(kw in low for kw in keywords)
 
 
+def found_keywords(text, keywords, limit=6):
+    """text 안에서 실제로 발견된 키워드 목록을 반환 (표시용).
+    - 긴 키워드부터 검사해 부분 중복을 줄임
+    - 원래 keywords.txt에 적힌 형태로 표시
+    - 최대 limit개까지"""
+    low = text.lower()
+    hits = []
+    for kw in sorted(keywords, key=len, reverse=True):
+        if kw in low and kw not in hits:
+            hits.append(kw)
+    # keywords.txt 순서대로 다시 정렬해서 일관성 유지
+    ordered = [kw for kw in keywords if kw in hits]
+    return ordered[:limit]
+
+
 def main():
     feeds = load_feeds()
     keywords = load_keywords()
@@ -108,6 +123,9 @@ def main():
                 if not matches_keywords(haystack, keywords):
                     continue
 
+                # 표시용 키워드 추출
+                kws_found = found_keywords(haystack, keywords)
+
                 # 날짜를 KST 기준 yyyy-mm-dd 문자열로 (없으면 빈 문자열)
                 date_kst = date.astimezone(KST).strftime("%Y-%m-%d") if date else ""
                 # 정렬용 타임스탬프 (없으면 0)
@@ -121,6 +139,7 @@ def main():
                     "link": link,
                     "date": date_kst,
                     "ts": ts,
+                    "keywords": kws_found,
                 })
                 n_kept += 1
             log.append(f"  [OK]  {group} / {name}: {n_total}개 중 {n_kept}개")
@@ -150,10 +169,16 @@ def render_html(items, groups_order, now_str):
   :root[data-theme="dark"] {
     --bg:#0f1115; --sidebar:#14171d; --card:#1a1d24; --border:#2a2e38;
     --text:#e8eaed; --muted:#9aa0a6; --accent:#6ea8fe; --date-bar:#222732;
+    /* 그룹별 색 (다크: 밝은 글자색) */
+    --g-Nature:#f0a868; --g-Science:#f08080; --g-Wiley:#6ea8fe;
+    --g-RSC:#5fc98a; --g-Elsevier:#e6c34a; --g-ACS:#8a93e0;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --sidebar:#ffffff; --card:#ffffff; --border:#e2e5ea;
     --text:#1a1d24; --muted:#6b7280; --accent:#2563eb; --date-bar:#eef1f6;
+    /* 그룹별 색 (라이트: 진한 글자색) */
+    --g-Nature:#c2691a; --g-Science:#c43d3d; --g-Wiley:#2563eb;
+    --g-RSC:#1f9254; --g-Elsevier:#a37e12; --g-ACS:#4750b0;
   }
   * { box-sizing:border-box; }
   body {
@@ -213,8 +238,9 @@ def render_html(items, groups_order, now_str):
   }
   .card:hover { border-color:var(--accent); }
   .card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px; }
-  .journal { font-size:11.5px; font-weight:600; color:var(--accent);
-    background:color-mix(in srgb, var(--accent) 14%, transparent);
+  .journal { font-size:11.5px; font-weight:600;
+    color:var(--jcolor, var(--accent));
+    background:color-mix(in srgb, var(--jcolor, var(--accent)) 14%, transparent);
     padding:2px 9px; border-radius:999px; }
   .grp { font-size:11px; color:var(--muted); }
   .title { font-size:16px; margin:2px 0 8px; line-height:1.4; }
@@ -222,6 +248,14 @@ def render_html(items, groups_order, now_str):
   .title a:hover { color:var(--accent); text-decoration:underline; }
   .abstract { margin:0; color:var(--muted); font-size:14px; }
   .no-abstract { font-style:italic; opacity:.6; }
+  /* 키워드 칩 */
+  .keywords { margin-top:9px; display:flex; flex-wrap:wrap; gap:5px; }
+  .kw {
+    font-size:11px; color:var(--muted);
+    background:color-mix(in srgb, var(--text) 8%, transparent);
+    border:1px solid var(--border);
+    padding:1px 8px; border-radius:6px;
+  }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
 
   /* ---- 모바일 ---- */
@@ -298,14 +332,20 @@ function render(){
     const abs = it.abstract
       ? `<p class="abstract">${esc(it.abstract)}</p>`
       : `<p class="abstract no-abstract">초록 없음 — 제목을 눌러 원문에서 확인</p>`;
+    const kwHtml = (it.keywords && it.keywords.length)
+      ? `<div class="keywords">${it.keywords.map(k => `<span class="kw">${esc(k)}</span>`).join("")}</div>`
+      : "";
+    // 그룹 색: CSS 변수 --g-<group> 을 카드의 --jcolor 로 연결
+    const safeGroup = it.group.replace(/[^a-zA-Z]/g, "");
     htmlStr += `
-      <article class="card">
+      <article class="card" style="--jcolor:var(--g-${safeGroup}, var(--accent))">
         <div class="card-head">
           <span class="journal">${esc(it.journal)}</span>
           <span class="grp">${esc(it.group)}</span>
         </div>
         <h2 class="title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
         ${abs}
+        ${kwHtml}
       </article>`;
   }
   content.innerHTML = htmlStr;
