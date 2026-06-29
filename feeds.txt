@@ -22,14 +22,14 @@ Science | Science Advances | https://www.science.org/action/showFeed?type=etoc&f
 
 Wiley | Advanced Materials | https://onlinelibrary.wiley.com/action/showFeed?jc=15214095&type=etoc&feed=rss
 Wiley | Advanced Energy Materials | https://onlinelibrary.wiley.com/action/showFeed?jc=16146840&type=etoc&feed=rss
-Wiley | Advanced Functional Materials | https://onlinelibrary.wiley.com/action/showFeed?jc=16163028&type=etoc&feed=rss
-Wiley | Advanced Science | https://onlinelibrary.wiley.com/action/showFeed?jc=21983844&type=etoc&feed=rss
+# (제외) Wiley | Advanced Functional Materials | https://onlinelibrary.wiley.com/action/showFeed?jc=16163028&type=etoc&feed=rss
+# (제외) Wiley | Advanced Science | https://onlinelibrary.wiley.com/action/showFeed?jc=21983844&type=etoc&feed=rss
 Wiley | Angew. Chem. Int. Ed. | https://onlinelibrary.wiley.com/action/showFeed?jc=15213773&type=etoc&feed=rss
 
 RSC | Energy & Environmental Science | https://pubs.rsc.org/en/journals/rss?journalcode=ee
 
 Elsevier | Joule | https://www.cell.com/joule/inanaRSS
-Elsevier | Chem | https://www.cell.com/chem/inanaRSS
+# (제외) Elsevier | Chem | https://www.cell.com/chem/inanaRSS
 Elsevier | Energy Storage Materials | https://rss.sciencedirect.com/publication/science/24052910
 
 ACS | JACS | https://pubs.acs.org/action/showFeed?type=etoc&feed=rss&jc=jacsat
