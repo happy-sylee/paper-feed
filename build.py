@@ -382,6 +382,7 @@ def render_html(items, groups_order, cat_order, now_str):
     padding:12px 24px; display:flex; gap:8px; align-items:center;
   }
   .searchbar[hidden] { display:none; }
+  .search-icon { font-size:15px; opacity:.7; }
   #searchInput {
     flex:1; background:var(--bg); border:1px solid var(--border);
     border-radius:8px; padding:9px 13px; color:var(--text); font-size:14px;
@@ -413,56 +414,93 @@ def render_html(items, groups_order, cat_order, now_str):
     background:var(--accent); color:#fff; border-color:var(--accent);
   }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
+  /* 맨 위로 버튼 */
+  #scrollTop {
+    position:fixed; right:24px; bottom:24px; z-index:30;
+    width:44px; height:44px; border-radius:50%;
+    background:var(--accent); color:#fff; border:none;
+    font-size:20px; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.25);
+    opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  #scrollTop.show { opacity:0.9; pointer-events:auto; }
+  #scrollTop:hover { opacity:1; }
 
   /* ---- 모바일: 사이드바를 가운데 드롭다운으로 ---- */
   .dropdown-toggle { display:none; }
   @media (max-width:680px) {
     .layout { flex-direction:column; }
+    /* 사이드바를 상단 고정 컨트롤 영역으로 */
     .sidebar {
       width:100%; height:auto; position:sticky; top:0; z-index:20;
       border-right:none; border-bottom:1px solid var(--border);
-      padding:10px 12px; display:flex; flex-direction:column; align-items:center;
+      padding:8px 12px; display:flex; flex-direction:column; align-items:stretch;
     }
     .sidebar h2 { display:none; }
-    /* 펼침 버튼 */
+    .folder-io { display:none; }              /* 모바일선 내보내기/가져오기 숨김 (공간 절약) */
+    #folderList .tab + * { }
+    /* 안내문구 숨김 */
+    #folderList > div[style*="hint"], .folder-hint { display:none; }
+    /* 상단 버튼 줄: 메뉴(저널/폴더) + 검색 + 필터 */
+    .mobile-bar { display:flex; gap:6px; }
     .dropdown-toggle {
-      display:flex; justify-content:space-between; align-items:center; gap:8px;
-      width:100%; max-width:320px;
+      display:flex; justify-content:space-between; align-items:center; gap:6px;
+      flex:1;
       background:var(--card); border:1px solid var(--border); color:var(--text);
-      border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; font-weight:600;
+      border-radius:10px; padding:9px 12px; cursor:pointer; font-size:13px; font-weight:600;
     }
     .dropdown-toggle .arrow { transition:transform .2s; color:var(--muted); }
     .sidebar.open .dropdown-toggle .arrow { transform:rotate(180deg); }
-    /* 탭 목록: 평소 숨김, open 시 표시 */
-    #tabs {
-      width:100%; max-width:320px; margin-top:6px;
+    /* 펼쳐지는 영역: 저널그룹 + 폴더 */
+    .sidebar-content {
       display:none; flex-direction:column; gap:2px;
+      margin-top:6px; max-height:60vh; overflow-y:auto;
     }
-    .sidebar.open #tabs { display:flex; }
+    .sidebar.open .sidebar-content { display:flex; }
+    #tabs { display:flex; flex-direction:column; gap:2px; }
     .tab { justify-content:space-between; }
-    /* 모바일: topbar는 일반 흐름 (사이드바 드롭다운이 상단 고정 역할) */
+    /* topbar(제목/메타) 일반 흐름, 검색·필터 버튼은 모바일바로 이동 */
     .topbar { position:static; }
+    header { padding:10px 14px; }
+    header h1 { font-size:16px; }
+    /* 데스크탑 헤더의 버튼들은 모바일에서 숨기고, 모바일바 버튼 사용 */
+    .desktop-btns { display:none; }
+    .mobile-only-btn {
+      display:flex; align-items:center; justify-content:center;
+      background:var(--card); border:1px solid var(--border); color:var(--text);
+      border-radius:10px; padding:9px 11px; cursor:pointer; font-size:13px; white-space:nowrap;
+    }
+    #scrollTop { right:16px; bottom:16px; width:40px; height:40px; }
   }
+  /* 데스크탑에선 모바일 전용 요소 숨김 */
+  .mobile-bar { display:none; }
+  .mobile-only-btn { display:none; }
 </style>
 </head>
 <body>
 <div class="layout">
   <nav class="sidebar" id="sidebar">
-    <button class="dropdown-toggle" id="dropdownToggle">
-      <span id="currentGroup">전체</span>
-      <span class="arrow">▾</span>
-    </button>
-    <h2>출판사 그룹</h2>
-    <div id="tabs"></div>
-    <h2 style="margin-top:18px; display:flex; justify-content:space-between; align-items:center;">
-      <span>내 폴더</span>
-      <span id="addFolder" style="cursor:pointer; color:var(--accent); font-size:16px;">+</span>
-    </h2>
-    <div id="folderList"></div>
-    <div class="folder-io">
-      <button id="exportFolders" title="폴더를 파일로 내보내기">내보내기</button>
-      <button id="importFolders" title="파일에서 폴더 가져오기">가져오기</button>
-      <input type="file" id="importFile" accept=".json" hidden>
+    <div class="mobile-bar">
+      <button class="dropdown-toggle" id="dropdownToggle">
+        <span id="currentGroup">전체</span>
+        <span class="arrow">▾</span>
+      </button>
+      <button class="mobile-only-btn" id="searchToggleM">🔍</button>
+      <button class="mobile-only-btn" id="filterToggleM">🔬</button>
+      <button class="mobile-only-btn" id="themeBtnM">🌙</button>
+    </div>
+    <div class="sidebar-content">
+      <h2>출판사 그룹</h2>
+      <div id="tabs"></div>
+      <h2 style="margin-top:18px; display:flex; justify-content:space-between; align-items:center;">
+        <span>내 폴더</span>
+        <span id="addFolder" style="cursor:pointer; color:var(--accent); font-size:16px;">＋</span>
+      </h2>
+      <div id="folderList"></div>
+      <div class="folder-io">
+        <button id="exportFolders" title="폴더를 파일로 내보내기">내보내기</button>
+        <button id="importFolders" title="파일에서 폴더 가져오기">가져오기</button>
+        <input type="file" id="importFile" accept=".json" hidden>
+      </div>
     </div>
   </nav>
   <div class="main">
@@ -472,7 +510,7 @@ def render_html(items, groups_order, cat_order, now_str):
         <h1>📚 논문 피드</h1>
         <div class="meta">최근 14일 · battery 관련 · 업데이트 __NOW__ KST</div>
       </div>
-      <div style="display:flex; gap:8px; align-items:center;">
+      <div class="desktop-btns" style="display:flex; gap:8px; align-items:center;">
         <button class="theme-btn" id="searchToggle">🔍 검색</button>
         <button class="theme-btn" id="filterToggle">🔬 필터</button>
         <button class="theme-btn" id="themeBtn">🌙 다크</button>
@@ -492,13 +530,15 @@ def render_html(items, groups_order, cat_order, now_str):
       </div>
     </div>
     <div class="searchbar" id="searchbar" hidden>
+      <span class="search-icon">🔍</span>
       <input type="text" id="searchInput" placeholder="제목 · 초록 · 저자에서 검색...">
-      <button class="search-clear" id="searchClear">✕</button>
+      <button class="search-clear" id="searchClear" title="검색 닫기">✕</button>
     </div>
     </div>
     <div class="content" id="content"></div>
   </div>
 </div>
+<button id="scrollTop" title="맨 위로">↑</button>
 
 <script>
 const ITEMS = __DATA__;
@@ -596,8 +636,9 @@ function buildFolders(){
   const names = Object.keys(folders);
   if(names.length === 0){
     const hint = document.createElement("div");
+    hint.className = "folder-hint";
     hint.style.cssText = "font-size:12px; color:var(--muted); padding:6px 10px;";
-    hint.textContent = "+ 로 폴더를 만들어보세요";
+    hint.textContent = "＋ 로 폴더를 만들어보세요";
     box.appendChild(hint);
     return;
   }
@@ -761,17 +802,26 @@ document.getElementById("dropdownToggle").onclick = () => {
 };
 
 // ---- 필터 바 열고 닫기 (웹+모바일 공통) ----
-document.getElementById("filterToggle").onclick = () => {
+function toggleFilter(){
   const fb = document.getElementById("filterbar");
   fb.hidden = !fb.hidden;
-};
+  // 모바일: 필터 열면 맨 위로 (필터바가 보이도록)
+  if(!fb.hidden && window.innerWidth <= 680) window.scrollTo({top:0, behavior:"smooth"});
+}
+document.getElementById("filterToggle").onclick = toggleFilter;
+{ const b = document.getElementById("filterToggleM"); if(b) b.onclick = toggleFilter; }
 
 // ---- 검색 바 열고 닫기 ----
-document.getElementById("searchToggle").onclick = () => {
+function toggleSearch(){
   const sb = document.getElementById("searchbar");
   sb.hidden = !sb.hidden;
-  if(!sb.hidden) document.getElementById("searchInput").focus();
-};
+  if(!sb.hidden){
+    document.getElementById("searchInput").focus();
+    if(window.innerWidth <= 680) window.scrollTo({top:0, behavior:"smooth"});
+  }
+}
+document.getElementById("searchToggle").onclick = toggleSearch;
+{ const b = document.getElementById("searchToggleM"); if(b) b.onclick = toggleSearch; }
 document.getElementById("searchInput").addEventListener("input", (e) => {
   searchQuery = e.target.value.trim().toLowerCase();
   document.getElementById("searchToggle").textContent =
@@ -782,6 +832,7 @@ document.getElementById("searchClear").onclick = () => {
   document.getElementById("searchInput").value = "";
   searchQuery = "";
   document.getElementById("searchToggle").textContent = "🔍 검색";
+  document.getElementById("searchbar").hidden = true;  // 검색바 닫기
   render(); buildTabs();
 };
 
@@ -951,26 +1002,38 @@ function escAttr(s){ return esc(s); }
 
 // ---- 라이트/다크 토글 (선택 기억) ----
 const themeBtn = document.getElementById("themeBtn");
+const themeBtnM = document.getElementById("themeBtnM");
 function applyTheme(theme){
   document.documentElement.setAttribute("data-theme", theme);
   themeBtn.textContent = theme==="dark" ? "☀️ 라이트" : "🌙 다크";
+  if(themeBtnM) themeBtnM.textContent = theme==="dark" ? "☀️" : "🌙";
 }
 // 저장된 테마 복원 (없으면 기본 라이트)
 let savedTheme = "light";
 try { savedTheme = localStorage.getItem("paperFeedTheme") || "light"; } catch(e){}
 applyTheme(savedTheme);
 
-themeBtn.onclick = () => {
+function toggleTheme(){
   const cur = document.documentElement.getAttribute("data-theme");
   const next = cur==="dark" ? "light" : "dark";
   applyTheme(next);
   try { localStorage.setItem("paperFeedTheme", next); } catch(e){}
-};
+}
+themeBtn.onclick = toggleTheme;
+if(themeBtnM) themeBtnM.onclick = toggleTheme;
 
 buildTabs();
 buildChips();
 buildFolders();
 render();
+
+// ---- 맨 위로 버튼 ----
+const scrollTopBtn = document.getElementById("scrollTop");
+window.addEventListener("scroll", () => {
+  if(window.scrollY > 400) scrollTopBtn.classList.add("show");
+  else scrollTopBtn.classList.remove("show");
+});
+scrollTopBtn.onclick = () => window.scrollTo({top:0, behavior:"smooth"});
 </script>
 </body>
 </html>""".replace("__DATA__", data_json).replace("__GROUPS__", groups_json).replace("__SYSTEMS__", systems_json).replace("__COMPONENTS__", components_json).replace("__NOW__", now_str)
