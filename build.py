@@ -412,25 +412,25 @@ def render_html(items, groups_order, cat_order, now_str):
   <nav class="sidebar" id="sidebar">
     <button class="dropdown-toggle" id="dropdownToggle">
       <span id="currentGroup">전체</span>
-      <span class="arrow">▾</span>
+      <span class="arrow">v</span>
     </button>
     <h2>출판사 그룹</h2>
     <div id="tabs"></div>
     <h2 style="margin-top:18px; display:flex; justify-content:space-between; align-items:center;">
       <span>내 폴더</span>
-      <span id="addFolder" style="cursor:pointer; color:var(--accent); font-size:16px;">＋</span>
+      <span id="addFolder" style="cursor:pointer; color:var(--accent); font-size:16px;">+</span>
     </h2>
     <div id="folderList"></div>
   </nav>
   <div class="main">
     <header>
       <div>
-        <h1>📚 논문 피드</h1>
+        <h1>논문 피드</h1>
         <div class="meta">최근 14일 · battery 관련 · 업데이트 __NOW__ KST</div>
       </div>
       <div style="display:flex; gap:8px; align-items:center;">
-        <button class="theme-btn" id="filterToggle">🔬 필터</button>
-        <button class="theme-btn" id="themeBtn">☀️ 라이트</button>
+        <button class="theme-btn" id="filterToggle">필터</button>
+        <button class="theme-btn" id="themeBtn">라이트</button>
       </div>
     </header>
     <div class="filterbar" id="filterbar" hidden>
@@ -505,7 +505,7 @@ function buildTabs(){
     div.innerHTML = `<span>${g}</span><span class="count">${countFor(g)}</span>`;
     div.onclick = () => {
       activeGroup = g;
-      backToFeed();         // 폴더 보기 → 메인 피드로
+      backToFeed();         // 폴더 보기 - 메인 피드로
       render();
       buildTabs();
       buildFolders();
@@ -525,7 +525,7 @@ function buildFolders(){
   if(names.length === 0){
     const hint = document.createElement("div");
     hint.style.cssText = "font-size:12px; color:var(--muted); padding:6px 10px;";
-    hint.textContent = "＋ 로 폴더를 만들어보세요";
+    hint.textContent = "+ 로 폴더를 만들어보세요";
     box.appendChild(hint);
     return;
   }
@@ -533,7 +533,7 @@ function buildFolders(){
     const div = document.createElement("div");
     const isActive = (viewMode==="folder" && activeFolder===name);
     div.className = "tab" + (isActive ? " active":"");
-    div.innerHTML = `<span class="folder-name">📁 ${escAttr(name)}</span><span class="count">${folders[name].length}</span>`;
+    div.innerHTML = `<span class="folder-name">${escAttr(name)}</span><span class="count">${folders[name].length}</span>`;
     // 폴더 선택
     div.querySelector(".folder-name").onclick = () => {
       viewMode = "folder"; activeFolder = name; activeGroup = "전체";
@@ -542,7 +542,7 @@ function buildFolders(){
     };
     // 우클릭/길게 누르면 관리 메뉴 대신, 옆에 작은 메뉴 버튼
     const menu = document.createElement("span");
-    menu.textContent = "⋯";
+    menu.textContent = "...";
     menu.style.cssText = "cursor:pointer; color:var(--muted); padding:0 4px; margin-left:4px;";
     menu.onclick = (e) => { e.stopPropagation(); folderMenu(name); };
     div.appendChild(menu);
@@ -572,7 +572,7 @@ function folderMenu(name){
   }
 }
 
-// ＋ 폴더 추가
+// + 폴더 추가
 document.getElementById("addFolder").onclick = () => {
   const name = prompt("새 폴더 이름:");
   if(name && name.trim()){
@@ -654,7 +654,7 @@ function render(){
   // 필터 버튼에 활성 표시
   const nFilters = activeSystems.size + activeComponents.size;
   document.getElementById("filterToggle").textContent =
-    nFilters > 0 ? `🔬 필터 (${nFilters})` : "🔬 필터";
+    nFilters > 0 ? `필터 (${nFilters})` : "필터";
 
   // 데이터 소스: 폴더 보기면 폴더 내용, 아니면 메인 피드
   let list;
@@ -673,7 +673,7 @@ function render(){
 
   if(list.length===0){
     const msg = (viewMode==="folder")
-      ? '이 폴더가 비어있어요. 메인 피드에서 ★ 를 눌러 논문을 담아보세요.'
+      ? '이 폴더가 비어있어요. 메인 피드에서 * 를 눌러 논문을 담아보세요.'
       : '조건에 맞는 논문이 없어요.';
     content.innerHTML = `<p class="empty">${msg}</p>`;
     return;
@@ -702,8 +702,8 @@ function render(){
       ? `<div class="cat-tags">${sysTags}${compTags}</div>` : "";
     // 그룹 색: CSS 변수 --g-<group> 을 카드의 --jcolor 로 연결
     const safeGroup = it.group.replace(/[^a-zA-Z]/g, "");
-    // 저장 버튼: 폴더 보기면 빼기(✕), 피드면 담기(★)
-    const btnIcon = (viewMode==="folder") ? "✕" : "☆";
+    // 저장 버튼: 폴더 보기면 빼기(x), 피드면 담기(*)
+    const btnIcon = (viewMode==="folder") ? "x" : "+";
     const btnTitle = (viewMode==="folder") ? "이 폴더에서 빼기" : "폴더에 담기";
     htmlStr += `
       <article class="card" style="--jcolor:var(--g-${safeGroup}, var(--accent))">
@@ -756,9 +756,9 @@ function savePaperToFolder(it){
     target = list[0];
   } else {
     const choice = prompt(
-      "어느 폴더에 담을까요?\n\n" +
-      list.map((n,i)=>`  ${i+1} = ${n}`).join("\n") +
-      "\n\n번호 입력:"
+      "어느 폴더에 담을까요?\\n\\n" +
+      list.map((n,i)=>`  ${i+1} = ${n}`).join("\\n") +
+      "\\n\\n번호 입력:"
     );
     const i = parseInt(choice,10)-1;
     if(isNaN(i) || i<0 || i>=list.length) return;
@@ -771,7 +771,7 @@ function savePaperToFolder(it){
   folders[target] = folders[target] || [];
   folders[target].push(it);   // 논문 통째로 복사 저장
   saveFolders(); buildFolders();
-  alert(`"${target}" 폴더에 담았어요. ⭐`);
+  alert(`"${target}" 폴더에 담았어요. `);
 }
 
 function esc(s){
@@ -786,7 +786,7 @@ themeBtn.onclick = () => {
   const root = document.documentElement;
   const next = root.getAttribute("data-theme")==="dark" ? "light":"dark";
   root.setAttribute("data-theme", next);
-  themeBtn.textContent = next==="dark" ? "☀️ 라이트" : "🌙 다크";
+  themeBtn.textContent = next==="dark" ? "라이트" : "다크";
 };
 
 buildTabs();
