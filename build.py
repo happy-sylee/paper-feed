@@ -413,6 +413,20 @@ def render_html(items, groups_order, cat_order, now_str):
   .chip.on {
     background:var(--accent); color:#fff; border-color:var(--accent);
   }
+  /* 날짜 선택기 */
+  .date-picker { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .date-input {
+    background:var(--card); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:5px 10px; font-size:13px; cursor:pointer;
+    font-family:inherit;
+  }
+  .date-input:focus { outline:none; border-color:var(--accent); }
+  .date-selected {
+    font-size:12px; color:var(--accent); font-weight:600;
+    background:color-mix(in srgb, var(--accent) 12%, transparent);
+    padding:3px 10px; border-radius:999px; cursor:pointer;
+  }
+  .date-selected[hidden] { display:none; }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
   /* 맨 위로 버튼 */
   #scrollTop {
@@ -518,6 +532,14 @@ def render_html(items, groups_order, cat_order, now_str):
     </header>
     <div class="filterbar" id="filterbar" hidden>
       <div class="filter-row">
+        <span class="filter-label">날짜</span>
+        <div class="date-picker">
+          <span class="chip" id="dateAll">전체</span>
+          <input type="date" id="datePicker" class="date-input">
+          <span class="date-selected" id="dateSelected" hidden></span>
+        </div>
+      </div>
+      <div class="filter-row">
         <span class="filter-label">시스템</span>
         <div class="chips" id="systemChips"></div>
       </div>
@@ -549,6 +571,7 @@ let activeGroup = "전체";
 let activeSystems = new Set();      // 선택된 시스템 칩 (비어있으면 전체)
 let activeComponents = new Set();   // 선택된 구성요소 칩
 let searchQuery = "";               // 검색어 (제목/초록/저자)
+let activeDate = "";                 // 선택된 날짜 (빈 문자열=전체)
 
 // ---- 폴더 (localStorage 기반) ----
 // 구조: { "폴더명": [ {논문 통째 복사}, ... ], ... }
@@ -748,11 +771,55 @@ document.getElementById("importFile").addEventListener("change", (e) => {
 function backToFeed(){
   viewMode = "feed"; activeFolder = null;
 }
+// ---- 날짜 선택기 ----
+function updateDateUI(){
+  const picker = document.getElementById("datePicker");
+  const allChip = document.getElementById("dateAll");
+  const selected = document.getElementById("dateSelected");
+  // 선택 가능 범위를 데이터에 있는 날짜로 제한
+  const dates = ITEMS.map(it => it.date).filter(d => d).sort();
+  if(dates.length){
+    picker.min = dates[0];
+    picker.max = dates[dates.length-1];
+  }
+  // "전체" 활성 표시
+  allChip.className = "chip" + (activeDate === "" ? " on" : "");
+  // 선택된 날짜 표시
+  if(activeDate){
+    selected.hidden = false;
+    selected.textContent = activeDate + " ✕";
+    picker.value = activeDate;
+  } else {
+    selected.hidden = true;
+    picker.value = "";
+  }
+}
+
+// "전체" 클릭 → 날짜 해제
+document.getElementById("dateAll").onclick = () => {
+  activeDate = "";
+  render(); buildChips(); buildTabs();
+};
+// 달력에서 날짜 선택
+document.getElementById("datePicker").addEventListener("change", (e) => {
+  activeDate = e.target.value || "";
+  render(); buildChips(); buildTabs();
+});
+// 선택된 날짜 칩 클릭 → 해제
+document.getElementById("dateSelected").onclick = () => {
+  activeDate = "";
+  render(); buildChips(); buildTabs();
+};
+
 function buildChips(){
   const sysBox = document.getElementById("systemChips");
   const compBox = document.getElementById("componentChips");
   sysBox.innerHTML = "";
   compBox.innerHTML = "";
+
+  // 날짜 선택기 상태 갱신
+  updateDateUI();
+
   SYSTEMS.forEach(s => {
     const c = document.createElement("span");
     c.className = "chip" + (activeSystems.has(s) ? " on":"");
@@ -792,6 +859,8 @@ function passFilter(it){
     const hay = (it.title + " " + it.abstract + " " + (it.authors||"")).toLowerCase();
     if(!hay.includes(searchQuery)) return false;
   }
+  // 날짜
+  if(activeDate && it.date !== activeDate) return false;
   // 축들 사이는 AND (위 조건 전부 통과해야 도달)
   return true;
 }
@@ -840,6 +909,7 @@ document.getElementById("searchClear").onclick = () => {
 document.getElementById("filterClear").onclick = () => {
   activeSystems.clear();
   activeComponents.clear();
+  activeDate = "";
   render(); buildChips(); buildTabs();
 };
 
@@ -848,7 +918,7 @@ function render(){
   const content = document.getElementById("content");
 
   // 필터 버튼에 활성 표시
-  const nFilters = activeSystems.size + activeComponents.size;
+  const nFilters = activeSystems.size + activeComponents.size + (activeDate ? 1 : 0);
   document.getElementById("filterToggle").textContent =
     nFilters > 0 ? `🔬 필터 (${nFilters})` : "🔬 필터";
 
@@ -862,6 +932,7 @@ function render(){
         const hay = (it.title + " " + it.abstract + " " + (it.authors||"")).toLowerCase();
         if(!hay.includes(searchQuery)) return false;
       }
+      if(activeDate && it.date !== activeDate) return false;
       return true;
     });
   } else {
