@@ -42,14 +42,68 @@ def load_feeds():
     return feeds
 
 
-def load_keywords():
-    kws = []
+def load_categories():
+    """keywords.txt 를 파싱해서 축별 카테고리 구조 반환.
+    반환: {
+      "SYSTEM": {"LIB": [kw...], "LMB": [...], ...},
+      "COMPONENT": {"Cathode": [...], ...}
+    }
+    그리고 축별 카테고리 등장 순서도 함께 반환."""
+    cats = {"SYSTEM": {}, "COMPONENT": {}}
+    order = {"SYSTEM": [], "COMPONENT": []}
+    cur_axis = None
+    cur_cat = None
     for line in KEYWORDS_FILE.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        kws.append(line.lower())
+        if line.startswith("[") and line.endswith("]"):
+            inner = line[1:-1]
+            if ":" in inner:
+                axis, cat = inner.split(":", 1)
+                axis = axis.strip().upper()
+                cat = cat.strip()
+                if axis in cats:
+                    cur_axis, cur_cat = axis, cat
+                    if cat not in cats[axis]:
+                        cats[axis][cat] = []
+                        order[axis].append(cat)
+                else:
+                    cur_axis = cur_cat = None
+            continue
+        # 키워드 줄
+        if cur_axis and cur_cat:
+            cats[cur_axis][cur_cat].append(line.lower())
+    return cats, order
+
+
+def all_keywords(cats):
+    """필터(수집)용: 모든 카테고리의 키워드를 하나의 집합으로"""
+    kws = set()
+    for axis in cats.values():
+        for kwlist in axis.values():
+            kws.update(kwlist)
     return kws
+
+
+def tag_categories(text, cats):
+    """text가 속하는 카테고리들을 축별로 반환.
+    반환: {"systems": [...], "components": [...]}
+    아무 카테고리에도 안 걸리면 ['others']"""
+    low = text.lower()
+    systems = []
+    for cat, kwlist in cats["SYSTEM"].items():
+        if any(kw in low for kw in kwlist):
+            systems.append(cat)
+    components = []
+    for cat, kwlist in cats["COMPONENT"].items():
+        if any(kw in low for kw in kwlist):
+            components.append(cat)
+    if not systems:
+        systems = ["others"]
+    if not components:
+        components = ["others"]
+    return {"systems": systems, "components": components}
 
 
 def clean_html(raw):
@@ -69,29 +123,16 @@ def get_entry_date(entry):
     return None
 
 
-def matches_keywords(text, keywords):
+def matches_any(text, keyword_set):
+    """text 안에 키워드 집합 중 하나라도 있으면 True (수집 필터용)"""
     low = text.lower()
-    return any(kw in low for kw in keywords)
-
-
-def found_keywords(text, keywords, limit=6):
-    """text 안에서 실제로 발견된 키워드 목록을 반환 (표시용).
-    - 긴 키워드부터 검사해 부분 중복을 줄임
-    - 원래 keywords.txt에 적힌 형태로 표시
-    - 최대 limit개까지"""
-    low = text.lower()
-    hits = []
-    for kw in sorted(keywords, key=len, reverse=True):
-        if kw in low and kw not in hits:
-            hits.append(kw)
-    # keywords.txt 순서대로 다시 정렬해서 일관성 유지
-    ordered = [kw for kw in keywords if kw in hits]
-    return ordered[:limit]
+    return any(kw in low for kw in keyword_set)
 
 
 def main():
     feeds = load_feeds()
-    keywords = load_keywords()
+    cats, cat_order = load_categories()
+    keyword_set = all_keywords(cats)
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=DAYS_BACK)
 
@@ -120,11 +161,11 @@ def main():
                 if date and date < cutoff:
                     continue
                 haystack = title + " " + abstract
-                if not matches_keywords(haystack, keywords):
+                if not matches_any(haystack, keyword_set):
                     continue
 
-                # 표시용 키워드 추출
-                kws_found = found_keywords(haystack, keywords)
+                # 카테고리 태깅 (시스템 축 + 구성요소 축)
+                tags = tag_categories(haystack, cats)
 
                 # 날짜를 KST 기준 yyyy-mm-dd 문자열로 (없으면 빈 문자열)
                 date_kst = date.astimezone(KST).strftime("%Y-%m-%d") if date else ""
@@ -139,7 +180,8 @@ def main():
                     "link": link,
                     "date": date_kst,
                     "ts": ts,
-                    "keywords": kws_found,
+                    "systems": tags["systems"],
+                    "components": tags["components"],
                 })
                 n_kept += 1
             log.append(f"  [OK]  {group} / {name}: {n_total}개 중 {n_kept}개")
@@ -147,17 +189,19 @@ def main():
             log.append(f"  [실패] {group} / {name}: {e}")
 
     now_kst_str = now.astimezone(KST).strftime("%Y-%m-%d %H:%M")
-    html_out = render_html(items, groups_order, now_kst_str)
+    html_out = render_html(items, groups_order, cat_order, now_kst_str)
     OUTPUT_FILE.write_text(html_out, encoding="utf-8")
 
     print(f"총 {len(items)}개 논문 수집 (최근 {DAYS_BACK}일)")
     print("\n".join(log))
 
 
-def render_html(items, groups_order, now_str):
+def render_html(items, groups_order, cat_order, now_str):
     # 데이터를 JS로 안전하게 전달 (</script> 깨짐 방지)
     data_json = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
     groups_json = json.dumps(groups_order, ensure_ascii=False)
+    systems_json = json.dumps(cat_order["SYSTEM"] + ["others"], ensure_ascii=False)
+    components_json = json.dumps(cat_order["COMPONENT"] + ["others"], ensure_ascii=False)
 
     return """<!DOCTYPE html>
 <html lang="ko" data-theme="dark">
@@ -172,6 +216,9 @@ def render_html(items, groups_order, now_str):
     /* 그룹별 색 (다크: 밝은 글자색) */
     --g-Nature:#f06a35; --g-Science:#f08080; --g-Wiley:#6ea8fe;
     --g-RSC:#5fc98a; --g-Elsevier:#e6c34a; --g-ACS:#8a93e0;
+    /* 시스템 카테고리 색 (다크) */
+    --sys-LIB:#6ea8fe; --sys-LMB:#b48ef0; --sys-SIB:#5fc98a;
+    --sys-ZIB:#e6a34a; --sys-others:#9aa0a6;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --sidebar:#ffffff; --card:#ffffff; --border:#e2e5ea;
@@ -179,6 +226,9 @@ def render_html(items, groups_order, now_str):
     /* 그룹별 색 (라이트: 진한 글자색) */
     --g-Nature:#ea5c27; --g-Science:#c43d3d; --g-Wiley:#2563eb;
     --g-RSC:#1f9254; --g-Elsevier:#a37e12; --g-ACS:#4750b0;
+    /* 시스템 카테고리 색 (라이트) */
+    --sys-LIB:#2563eb; --sys-LMB:#7c3aed; --sys-SIB:#1f9254;
+    --sys-ZIB:#b8740f; --sys-others:#6b7280;
   }
   * { box-sizing:border-box; }
   body {
@@ -248,13 +298,43 @@ def render_html(items, groups_order, now_str):
   .title a:hover { color:var(--accent); text-decoration:underline; }
   .abstract { margin:0; color:var(--muted); font-size:14px; }
   .no-abstract { font-style:italic; opacity:.6; }
-  /* 키워드 칩 */
-  .keywords { margin-top:9px; display:flex; flex-wrap:wrap; gap:5px; }
-  .kw {
-    font-size:11px; color:var(--muted);
-    background:color-mix(in srgb, var(--text) 8%, transparent);
-    border:1px solid var(--border);
-    padding:1px 8px; border-radius:6px;
+  /* 카드 안 카테고리 태그 */
+  .cat-tags { margin-top:9px; display:flex; flex-wrap:wrap; gap:5px; }
+  .cat-tag {
+    font-size:11px; font-weight:500;
+    padding:1px 9px; border-radius:6px; border:1px solid transparent;
+  }
+  .cat-tag.system {
+    color:var(--sys-color, var(--muted));
+    background:color-mix(in srgb, var(--sys-color, var(--muted)) 12%, transparent);
+    border-color:color-mix(in srgb, var(--sys-color, var(--muted)) 30%, transparent);
+  }
+  .cat-tag.component {
+    color:var(--muted);
+    background:color-mix(in srgb, var(--text) 7%, transparent);
+    border-color:var(--border);
+  }
+
+  /* 상단 필터 바 */
+  .filterbar {
+    position:sticky; top:56px; z-index:8;
+    background:var(--bg); border-bottom:1px solid var(--border);
+    padding:10px 24px; display:flex; flex-direction:column; gap:8px;
+  }
+  .filter-row { display:flex; align-items:center; gap:10px; }
+  .filter-label {
+    font-size:11px; font-weight:600; color:var(--muted);
+    min-width:52px; letter-spacing:.03em;
+  }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip {
+    font-size:12px; padding:3px 11px; border-radius:999px;
+    border:1px solid var(--border); background:var(--card); color:var(--muted);
+    cursor:pointer; user-select:none; transition:all .12s;
+  }
+  .chip:hover { border-color:var(--accent); color:var(--text); }
+  .chip.on {
+    background:var(--accent); color:#fff; border-color:var(--accent);
   }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
 
@@ -306,6 +386,16 @@ def render_html(items, groups_order, now_str):
       </div>
       <button class="theme-btn" id="themeBtn">☀️ 라이트</button>
     </header>
+    <div class="filterbar" id="filterbar">
+      <div class="filter-row">
+        <span class="filter-label">시스템</span>
+        <div class="chips" id="systemChips"></div>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">구성요소</span>
+        <div class="chips" id="componentChips"></div>
+      </div>
+    </div>
     <div class="content" id="content"></div>
   </div>
 </div>
@@ -313,19 +403,30 @@ def render_html(items, groups_order, now_str):
 <script>
 const ITEMS = __DATA__;
 const GROUPS = __GROUPS__;
+const SYSTEMS = __SYSTEMS__;
+const COMPONENTS = __COMPONENTS__;
 let activeGroup = "전체";
+let activeSystems = new Set();      // 선택된 시스템 칩 (비어있으면 전체)
+let activeComponents = new Set();   // 선택된 구성요소 칩
 
 // ---- 사이드바 탭 만들기 ----
 function buildTabs(){
   const tabs = document.getElementById("tabs");
-  const counts = {"전체": ITEMS.length};
-  GROUPS.forEach(g => counts[g] = ITEMS.filter(it => it.group===g).length);
+  // 시스템/구성요소 필터를 반영한 카운트 (그룹 필터는 제외하고 셈)
+  function countFor(group){
+    return ITEMS.filter(it => {
+      if(group !== "전체" && it.group !== group) return false;
+      if(activeSystems.size>0 && !(it.systems||[]).some(s=>activeSystems.has(s))) return false;
+      if(activeComponents.size>0 && !(it.components||[]).some(c=>activeComponents.has(c))) return false;
+      return true;
+    }).length;
+  }
   const list = ["전체", ...GROUPS];
   tabs.innerHTML = "";
   list.forEach(g => {
     const div = document.createElement("div");
     div.className = "tab" + (g===activeGroup ? " active":"");
-    div.innerHTML = `<span>${g}</span><span class="count">${counts[g]||0}</span>`;
+    div.innerHTML = `<span>${g}</span><span class="count">${countFor(g)}</span>`;
     div.onclick = () => {
       activeGroup = g;
       render();
@@ -338,6 +439,50 @@ function buildTabs(){
   });
 }
 
+// ---- 상단 필터 칩 만들기 ----
+function buildChips(){
+  const sysBox = document.getElementById("systemChips");
+  const compBox = document.getElementById("componentChips");
+  sysBox.innerHTML = "";
+  compBox.innerHTML = "";
+  SYSTEMS.forEach(s => {
+    const c = document.createElement("span");
+    c.className = "chip" + (activeSystems.has(s) ? " on":"");
+    c.textContent = s;
+    c.onclick = () => {
+      activeSystems.has(s) ? activeSystems.delete(s) : activeSystems.add(s);
+      render(); buildChips(); buildTabs();
+    };
+    sysBox.appendChild(c);
+  });
+  COMPONENTS.forEach(s => {
+    const c = document.createElement("span");
+    c.className = "chip" + (activeComponents.has(s) ? " on":"");
+    c.textContent = s;
+    c.onclick = () => {
+      activeComponents.has(s) ? activeComponents.delete(s) : activeComponents.add(s);
+      render(); buildChips(); buildTabs();
+    };
+    compBox.appendChild(c);
+  });
+}
+
+// ---- 필터 적용: 같은 축 OR, 다른 축 AND ----
+function passFilter(it){
+  // 출판사 그룹
+  if(activeGroup !== "전체" && it.group !== activeGroup) return false;
+  // 시스템 축 (선택된 게 있으면, 논문 시스템 중 하나라도 선택셋에 있어야 함 = OR)
+  if(activeSystems.size > 0){
+    if(!(it.systems||[]).some(s => activeSystems.has(s))) return false;
+  }
+  // 구성요소 축 (OR)
+  if(activeComponents.size > 0){
+    if(!(it.components||[]).some(c => activeComponents.has(c))) return false;
+  }
+  // 축들 사이는 AND (위 조건 전부 통과해야 도달)
+  return true;
+}
+
 // ---- 모바일 드롭다운 펼침/접힘 ----
 document.getElementById("dropdownToggle").onclick = () => {
   document.getElementById("sidebar").classList.toggle("open");
@@ -346,7 +491,7 @@ document.getElementById("dropdownToggle").onclick = () => {
 // ---- 본문 렌더링 (날짜로 그룹핑) ----
 function render(){
   const content = document.getElementById("content");
-  let list = (activeGroup==="전체") ? ITEMS.slice() : ITEMS.filter(it => it.group===activeGroup);
+  let list = ITEMS.filter(passFilter);
 
   // 정렬: 최신 날짜 우선, 같은 날짜면 저널 이름 순
   list.sort((a,b) => (b.ts - a.ts) || a.journal.localeCompare(b.journal));
@@ -367,9 +512,14 @@ function render(){
     const abs = it.abstract
       ? `<p class="abstract">${esc(it.abstract)}</p>`
       : `<p class="abstract no-abstract">초록 없음 — 제목을 눌러 원문에서 확인</p>`;
-    const kwHtml = (it.keywords && it.keywords.length)
-      ? `<div class="keywords">${it.keywords.map(k => `<span class="kw">${esc(k)}</span>`).join("")}</div>`
-      : "";
+    const sysTags = (it.systems||[]).map(s =>
+      `<span class="cat-tag system" style="--sys-color:var(--sys-${s.replace(/[^a-zA-Z]/g,'')}, var(--muted))">${esc(s)}</span>`
+    ).join("");
+    const compTags = (it.components||[]).map(c =>
+      `<span class="cat-tag component">${esc(c)}</span>`
+    ).join("");
+    const tagHtml = (sysTags || compTags)
+      ? `<div class="cat-tags">${sysTags}${compTags}</div>` : "";
     // 그룹 색: CSS 변수 --g-<group> 을 카드의 --jcolor 로 연결
     const safeGroup = it.group.replace(/[^a-zA-Z]/g, "");
     htmlStr += `
@@ -380,7 +530,7 @@ function render(){
         </div>
         <h2 class="title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
         ${abs}
-        ${kwHtml}
+        ${tagHtml}
       </article>`;
   }
   content.innerHTML = htmlStr;
@@ -401,10 +551,11 @@ themeBtn.onclick = () => {
 };
 
 buildTabs();
+buildChips();
 render();
 </script>
 </body>
-</html>""".replace("__DATA__", data_json).replace("__GROUPS__", groups_json).replace("__NOW__", now_str)
+</html>""".replace("__DATA__", data_json).replace("__GROUPS__", groups_json).replace("__SYSTEMS__", systems_json).replace("__COMPONENTS__", components_json).replace("__NOW__", now_str)
 
 
 if __name__ == "__main__":
