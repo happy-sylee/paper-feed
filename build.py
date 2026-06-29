@@ -170,14 +170,14 @@ def render_html(items, groups_order, now_str):
     --bg:#0f1115; --sidebar:#14171d; --card:#1a1d24; --border:#2a2e38;
     --text:#e8eaed; --muted:#9aa0a6; --accent:#6ea8fe; --date-bar:#222732;
     /* 그룹별 색 (다크: 밝은 글자색) */
-    --g-Nature:#f0a868; --g-Science:#f08080; --g-Wiley:#6ea8fe;
+    --g-Nature:#f06a35; --g-Science:#f08080; --g-Wiley:#6ea8fe;
     --g-RSC:#5fc98a; --g-Elsevier:#e6c34a; --g-ACS:#8a93e0;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --sidebar:#ffffff; --card:#ffffff; --border:#e2e5ea;
     --text:#1a1d24; --muted:#6b7280; --accent:#2563eb; --date-bar:#eef1f6;
     /* 그룹별 색 (라이트: 진한 글자색) */
-    --g-Nature:#c2691a; --g-Science:#c43d3d; --g-Wiley:#2563eb;
+    --g-Nature:#ea5c27; --g-Science:#c43d3d; --g-Wiley:#2563eb;
     --g-RSC:#1f9254; --g-Elsevier:#a37e12; --g-ACS:#4750b0;
   }
   * { box-sizing:border-box; }
@@ -258,20 +258,43 @@ def render_html(items, groups_order, now_str):
   }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
 
-  /* ---- 모바일 ---- */
+  /* ---- 모바일: 사이드바를 가운데 드롭다운으로 ---- */
+  .dropdown-toggle { display:none; }
   @media (max-width:680px) {
     .layout { flex-direction:column; }
-    .sidebar { width:100%; height:auto; position:static; border-right:none;
-      border-bottom:1px solid var(--border); display:flex; flex-wrap:wrap; gap:4px; }
-    .sidebar h2 { width:100%; }
-    .tab { flex:0 0 auto; margin-bottom:0; }
-    .date-header { top:0; }
+    .sidebar {
+      width:100%; height:auto; position:sticky; top:0; z-index:20;
+      border-right:none; border-bottom:1px solid var(--border);
+      padding:10px 12px; display:flex; flex-direction:column; align-items:center;
+    }
+    .sidebar h2 { display:none; }
+    /* 펼침 버튼 */
+    .dropdown-toggle {
+      display:flex; justify-content:space-between; align-items:center; gap:8px;
+      width:100%; max-width:320px;
+      background:var(--card); border:1px solid var(--border); color:var(--text);
+      border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; font-weight:600;
+    }
+    .dropdown-toggle .arrow { transition:transform .2s; color:var(--muted); }
+    .sidebar.open .dropdown-toggle .arrow { transform:rotate(180deg); }
+    /* 탭 목록: 평소 숨김, open 시 표시 */
+    #tabs {
+      width:100%; max-width:320px; margin-top:6px;
+      display:none; flex-direction:column; gap:2px;
+    }
+    .sidebar.open #tabs { display:flex; }
+    .tab { justify-content:space-between; }
+    .date-header { top:54px; }
   }
 </style>
 </head>
 <body>
 <div class="layout">
-  <nav class="sidebar">
+  <nav class="sidebar" id="sidebar">
+    <button class="dropdown-toggle" id="dropdownToggle">
+      <span id="currentGroup">전체</span>
+      <span class="arrow">▾</span>
+    </button>
     <h2>출판사 그룹</h2>
     <div id="tabs"></div>
   </nav>
@@ -303,10 +326,22 @@ function buildTabs(){
     const div = document.createElement("div");
     div.className = "tab" + (g===activeGroup ? " active":"");
     div.innerHTML = `<span>${g}</span><span class="count">${counts[g]||0}</span>`;
-    div.onclick = () => { activeGroup = g; render(); buildTabs(); };
+    div.onclick = () => {
+      activeGroup = g;
+      render();
+      buildTabs();
+      // 모바일 드롭다운: 선택 시 라벨 갱신하고 접기
+      document.getElementById("currentGroup").textContent = g;
+      document.getElementById("sidebar").classList.remove("open");
+    };
     tabs.appendChild(div);
   });
 }
+
+// ---- 모바일 드롭다운 펼침/접힘 ----
+document.getElementById("dropdownToggle").onclick = () => {
+  document.getElementById("sidebar").classList.toggle("open");
+};
 
 // ---- 본문 렌더링 (날짜로 그룹핑) ----
 function render(){
