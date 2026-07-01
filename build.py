@@ -288,6 +288,18 @@ def render_html(items, groups_order, cat_order, now_str):
     border-radius:6px; padding:6px 4px; cursor:pointer;
   }
   .folder-io button:hover { border-color:var(--accent); color:var(--accent); }
+  .hidden-info {
+    margin-top:14px; padding:8px 10px; font-size:11px; color:var(--muted);
+    display:flex; flex-direction:column; gap:6px; align-items:flex-start;
+    border-top:1px solid var(--border);
+  }
+  .hidden-info[hidden] { display:none; }
+  #restoreHidden {
+    font-size:11px; color:var(--muted); background:none;
+    border:1px solid var(--border); border-radius:6px;
+    padding:4px 10px; cursor:pointer;
+  }
+  #restoreHidden:hover { border-color:var(--accent); color:var(--accent); }
 
   /* ---- 메인 ---- */
   .main { flex:1; min-width:0; }
@@ -345,6 +357,11 @@ def render_html(items, groups_order, cat_order, now_str):
   }
   .claude-btn:hover { color:#fff; background:var(--accent); border-color:var(--accent); }
   @media (max-width:680px) { .claude-btn { display:none; } }
+  .hide-btn {
+    background:none; border:none; cursor:pointer; font-size:14px;
+    padding:0 2px; line-height:1; opacity:0.5; transition:opacity .12s, transform .12s;
+  }
+  .hide-btn:hover { opacity:1; transform:scale(1.15); }
   .title { font-size:16px; margin:2px 0 6px; line-height:1.4; }
   .title a { color:var(--text); text-decoration:none; }
   .title a:hover { color:var(--accent); text-decoration:underline; }
@@ -515,6 +532,10 @@ def render_html(items, groups_order, cat_order, now_str):
         <button id="importFolders" title="파일에서 폴더 가져오기">가져오기</button>
         <input type="file" id="importFile" accept=".json" hidden>
       </div>
+      <div id="hiddenInfo" class="hidden-info" hidden>
+        <span id="hiddenCount"></span>
+        <button id="restoreHidden">되살리기</button>
+      </div>
     </div>
   </nav>
   <div class="main">
@@ -614,6 +635,41 @@ function saveReadSet(){
 function markRead(it){
   readSet.add(paperKey(it));
   saveReadSet();
+}
+
+// ---- 숨긴 논문 (배터리 논문 아닌 것 걸러내기, localStorage) ----
+const HIDE_KEY = "paperFeedHidden";
+let hiddenSet = loadHiddenSet();
+function loadHiddenSet(){
+  try {
+    const raw = localStorage.getItem(HIDE_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch(e){ return new Set(); }
+}
+function saveHiddenSet(){
+  try { localStorage.setItem(HIDE_KEY, JSON.stringify([...hiddenSet])); } catch(e){}
+}
+function hidePaper(it){
+  hiddenSet.add(paperKey(it));
+  saveHiddenSet();
+}
+function unhideAll(){
+  hiddenSet.clear();
+  saveHiddenSet();
+}
+// 숨긴 논문 정보 사이드바 갱신
+function updateHiddenInfo(){
+  const info = document.getElementById("hiddenInfo");
+  const countEl = document.getElementById("hiddenCount");
+  if(!info) return;
+  // 현재 피드에 실제로 존재하는 숨긴 논문 수만 셈
+  const n = ITEMS.filter(it => hiddenSet.has(paperKey(it))).length;
+  if(n > 0){
+    info.hidden = false;
+    countEl.textContent = `숨긴 논문 ${n}개`;
+  } else {
+    info.hidden = true;
+  }
 }
 
 // ---- 사이드바 탭 만들기 ----
@@ -844,6 +900,8 @@ function buildChips(){
 
 // ---- 필터 적용: 같은 축 OR, 다른 축 AND ----
 function passFilter(it){
+  // 숨긴 논문 제외 (배터리 논문 아닌 것)
+  if(hiddenSet.has(paperKey(it))) return false;
   // 출판사 그룹
   if(activeGroup !== "전체" && it.group !== activeGroup) return false;
   // 시스템 축 (선택된 게 있으면, 논문 시스템 중 하나라도 선택셋에 있어야 함 = OR)
@@ -985,6 +1043,7 @@ function render(){
             <span class="grp">${esc(it.group)}</span>
             <button class="claude-btn" data-idx="${idx}" title="Claude로 분석 (새 탭)">C</button>
             <button class="save-btn" data-idx="${idx}" title="${btnTitle}">${btnIcon}</button>
+            ${viewMode!=="folder" ? `<button class="hide-btn" data-idx="${idx}" title="배터리 논문 아님 - 숨기기">🗑️</button>` : ""}
           </div>
         </div>
         <h2 class="title"><a href="${esc(it.link)}" data-idx="${idx}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
@@ -1010,6 +1069,18 @@ function render(){
       if(it){ markRead(it); btn.closest(".card").classList.add("read"); }
       // 같은 이름의 탭 재사용 → 매번 새 탭이 쌓이지 않음
       window.open("https://claude.ai/new", "claudeSummaryTab");
+    };
+  });
+
+  // 숨기기 버튼 (배터리 논문 아닌 것)
+  content.querySelectorAll(".hide-btn").forEach(btn => {
+    btn.onclick = () => {
+      const it = currentList[parseInt(btn.dataset.idx, 10)];
+      if(!it) return;
+      if(confirm(`이 논문을 피드에서 숨길까요?\\n\\n"${it.title.slice(0,60)}${it.title.length>60?"...":""}"\\n\\n(다시 빌드돼도 계속 안 보여요. 사이드바 아래 "숨긴 논문"에서 되살릴 수 있어요.)`)){
+        hidePaper(it);
+        render(); buildTabs(); buildFolders(); updateHiddenInfo();
+      }
     };
   });
 
@@ -1096,7 +1167,17 @@ if(themeBtnM) themeBtnM.onclick = toggleTheme;
 buildTabs();
 buildChips();
 buildFolders();
+updateHiddenInfo();
 render();
+
+// 숨긴 논문 되살리기
+document.getElementById("restoreHidden").onclick = () => {
+  if(confirm("숨긴 논문을 모두 되살릴까요?")){
+    unhideAll();
+    updateHiddenInfo();
+    render(); buildTabs();
+  }
+};
 
 // ---- 맨 위로 버튼 ----
 const scrollTopBtn = document.getElementById("scrollTop");
